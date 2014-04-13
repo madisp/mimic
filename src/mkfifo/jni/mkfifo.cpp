@@ -1,10 +1,8 @@
-#include <cstdio>
 #include <sys/stat.h>
 
 int main(int argc, char *argv[]) {
-	int result = mkfifo("/data/local/tmp/share", S_IRWXO);
-	if (result != 0) {
-		printf("Error creating pipe");
+	if (argc > 1) {
+		return mkfifo(argv[1], S_IRWXO);
 	}
-	return 0;
+	return 1;
 }

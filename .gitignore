@@ -1,0 +1,4 @@
+# VIM files
+*.swp
+# client pipe
+/mimic_device
