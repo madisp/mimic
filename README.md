@@ -54,6 +54,9 @@ adb -s "$DEVICE_IP:5555" shell "/data/local/tmp/screenrecord \
   --bit-rate $BITRATE --time-limit $TIMELIMIT --raw stdout   \
   | /data/local/tmp/mimic"
 
+# it's running! Connect with VLC
+vlc rtsp://$DEVICE_IP:5554
+
 # once done, disconnect the tcpip adb
 adb disconnect $DEVICE_IP:5555
 ```
