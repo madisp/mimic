@@ -18,6 +18,7 @@ You're using either Linux or OS X, you have vlc and ruby and you have a single
 device attached over adb where said device is on the same LAN as your computer:
 
 ```bash
+cd mimic/checkout/dir
 ruby mimic.rb
 ```
 
