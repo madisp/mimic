@@ -25,8 +25,8 @@ def die(msg)
   exit 1
 end
 
-# discover local executables [adb, nc, mplayer]
-%w{adb nc mplayer}.each do |e|
+# discover local executables [adb, vlc]
+%w{adb vlc}.each do |e|
   die "#{e} executable not found on PATH" unless cmd? e
 end
 
@@ -68,38 +68,43 @@ die "Could not detect host ip. Are you on the same wifi as the device?" unless h
 
 #TODO print some nice info?
 
-# clean the pipe
-usb_sh 'rm /data/local/tmp/mimic_host'
-# copy the binaries
-%w{mimic_arm nc_arm mkfifo_arm}.each do |f|
+execs = %w{mimic screenrecord}
+execs.each do |f|
+  # clean any already existing executables
+  usb_sh "rm /data/local/tmp/#{f}"
+  # copy them
   `adb -d push bin/#{f} /data/local/tmp/#{f}`
-  usb_sh "chmod 755 /data/local/tmp/#{f}"
+  # mark as executable
+  usb_sh "chmod 700 /data/local/tmp/#{f}"
 end
-usb_sh '/data/local/tmp/mkfifo_arm /data/local/tmp/mimic_host'
-usb_sh 'chmod 666 /data/local/tmp/mimic_host'
 
 # enable adb over tcpip
 `adb tcpip 5555`
+sleep 1
 # connect over tcpip
 `adb connect #{ip}:5555`
-# start local nc listening
-`rm mimic_device`
-`mkfifo mimic_device`
-thrs = []
-thrs << Thread.new { `nc -l -p 58247 > mimic_device` }
-sleep 3
-thrs << Thread.new { `mplayer -demuxer h264es -fps 60 mimic_device` }
-thrs << Thread.new { puts `adb -s "#{ip}:5555" shell "/data/local/tmp/nc_arm #{host_ip} 58247 < /data/local/tmp/mimic_host"` }
-sleep 2
+
+# sleep a bit
+sleep 1
+
+# start mimic over tcpip
+thr = Thread.new { puts `adb -s '#{ip}:5555' shell '/data/local/tmp/screenrecord --bit-rate 12000000 --time-limit 1800 --raw stdout | /data/local/tmp/mimic'` }
 
 trap ("INT") do
-  thrs.each { |thr| thr.kill }
+  thr.kill
   `adb disconnect #{ip}:5555`
 end
 
+# sleep a bit more...
+sleep 3
+
+puts "============================================"
 puts "Screen mirroring running. CTRL-C to quit."
 puts "You can disconnect your device from USB now."
+puts "============================================"
+puts ""
+puts "Here's some debug output from VLC:"
 
-# start mimic
-puts `adb -s "#{ip}:5555" shell /data/local/tmp/mimic_arm --bit-rate 4000000 --time-limit 1800 --raw /data/local/tmp/mimic_host`
+# start VLC
+`vlc rtsp://#{ip}:5554`
 # all done.

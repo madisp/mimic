@@ -1,8 +1,16 @@
 diff --git a/cmds/screenrecord/screenrecord.cpp b/cmds/screenrecord/screenrecord.cpp
-index 61f83e3..5f02218 100644
+index 61f83e3..93e3f4f 100644
 --- a/cmds/screenrecord/screenrecord.cpp
 +++ b/cmds/screenrecord/screenrecord.cpp
-@@ -54,11 +54,12 @@ using namespace android;
+@@ -29,6 +29,7 @@
+ #include <gui/ISurfaceComposer.h>
+ #include <ui/DisplayInfo.h>
+ #include <media/openmax/OMX_IVCommon.h>
++#include <media/openmax/OMX_Video.h>
+ #include <media/stagefright/foundation/ABuffer.h>
+ #include <media/stagefright/foundation/AMessage.h>
+ #include <media/stagefright/MediaCodec.h>
+@@ -54,11 +55,12 @@ using namespace android;
  
  static const uint32_t kMinBitRate = 100000;         // 0.1Mbps
  static const uint32_t kMaxBitRate = 200 * 1000000;  // 200Mbps
@@ -16,7 +24,17 @@ index 61f83e3..5f02218 100644
  static bool gVerbose = false;           // chatty on stdout
  static bool gRotate = false;            // rotate 90 degrees
  static bool gSizeSpecified = false;     // was size explicitly requested?
-@@ -302,7 +303,7 @@ static status_t prepareVirtualDisplay(const DisplayInfo& mainDpyInfo,
+@@ -152,6 +154,9 @@ static status_t prepareEncoder(float displayFps, sp<MediaCodec>* pCodec,
+     format->setInt32("bitrate", gBitRate);
+     format->setFloat("frame-rate", displayFps);
+     format->setInt32("i-frame-interval", 10);
++    format->setInt32("intra-refresh-mode", OMX_VIDEO_IntraRefreshCyclic);
++    int mbs = (((gVideoWidth + 15) / 16) * ((gVideoHeight + 15) / 16) * 10) / 100;
++    format->setInt32("intra-refresh-CIR-mbs", mbs);
+ 
+     sp<ALooper> looper = new ALooper;
+     looper->setName("screenrecord_looper");
+@@ -302,7 +307,7 @@ static status_t prepareVirtualDisplay(const DisplayInfo& mainDpyInfo,
   */
  static status_t runEncoder(const sp<MediaCodec>& encoder,
          const sp<MediaMuxer>& muxer, const sp<IBinder>& mainDpy,
@@ -25,7 +43,7 @@ index 61f83e3..5f02218 100644
      static int kTimeout = 250000;   // be responsive on signal
      status_t err;
      ssize_t trackIdx = -1;
-@@ -341,9 +342,10 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
+@@ -341,9 +346,10 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
          switch (err) {
          case NO_ERROR:
              // got a buffer
@@ -38,7 +56,7 @@ index 61f83e3..5f02218 100644
                  ALOGV("Got codec config buffer (%u bytes); ignoring", size);
                  size = 0;
              }
-@@ -387,12 +389,17 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
+@@ -387,12 +393,17 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
                  // want to queue these up and do them on a different thread.
                  { // scope
                      ATRACE_NAME("write sample");
@@ -62,7 +80,7 @@ index 61f83e3..5f02218 100644
                      }
                  }
                  debugNumFrames++;
-@@ -416,14 +423,16 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
+@@ -416,14 +427,16 @@ static status_t runEncoder(const sp<MediaCodec>& encoder,
              {
                  // Format includes CSD, which we must provide to muxer.
                  ALOGV("Encoder format changed");
@@ -87,7 +105,7 @@ index 61f83e3..5f02218 100644
                  }
              }
              break;
-@@ -558,16 +567,22 @@ static status_t recordScreen(const char* fileName) {
+@@ -558,16 +571,26 @@ static status_t recordScreen(const char* fileName) {
          return err;
      }
  
@@ -97,7 +115,11 @@ index 61f83e3..5f02218 100644
 +    int rawOutFd = 0;
 +    sp<MediaMuxer> muxer = NULL;
 +    if (gRawH264) {
-+        rawOutFd = open(fileName, O_CREAT | O_RDWR, 0644);
++        if (!strncmp(fileName, "stdout", 6)) {
++            rawOutFd = STDOUT_FILENO;
++        } else {
++            rawOutFd = open(fileName, O_CREAT | O_RDWR, 0644);
++        }
 +    } else {
 +        // Configure muxer.  We have to wait for the CSD blob from the encoder
 +        // before we can start it.
@@ -116,7 +138,7 @@ index 61f83e3..5f02218 100644
      if (err != NO_ERROR) {
          fprintf(stderr, "Encoder failed (err=%d)\n", err);
          // fall through to cleanup
-@@ -586,7 +601,12 @@ static status_t recordScreen(const char* fileName) {
+@@ -586,7 +609,12 @@ static status_t recordScreen(const char* fileName) {
      encoder->stop();
      // If we don't stop muxer explicitly, i.e. let the destructor run,
      // it may hang (b/11050628).
@@ -130,7 +152,7 @@ index 61f83e3..5f02218 100644
      encoder->release();
  
      return err;
-@@ -728,6 +748,8 @@ static void usage() {
+@@ -728,6 +756,8 @@ static void usage() {
          "    in videos captured to illustrate bugs.\n"
          "--time-limit TIME\n"
          "    Set the maximum recording time, in seconds.  Default / maximum is %d.\n"
@@ -139,7 +161,7 @@ index 61f83e3..5f02218 100644
          "--verbose\n"
          "    Display interesting information on stdout.\n"
          "--help\n"
-@@ -753,6 +775,7 @@ int main(int argc, char* const argv[]) {
+@@ -753,6 +783,7 @@ int main(int argc, char* const argv[]) {
          { "show-frame-time",    no_argument,        NULL, 'f' },
          { "bugreport",          no_argument,        NULL, 'u' },
          { "rotate",             no_argument,        NULL, 'r' },
@@ -147,7 +169,7 @@ index 61f83e3..5f02218 100644
          { NULL,                 0,                  NULL, 0 }
      };
  
-@@ -814,6 +837,9 @@ int main(int argc, char* const argv[]) {
+@@ -814,6 +845,9 @@ int main(int argc, char* const argv[]) {
              gWantInfoScreen = true;
              gWantFrameTime = true;
              break;
@@ -157,8 +179,23 @@ index 61f83e3..5f02218 100644
          case 'r':
              // experimental feature
              gRotate = true;
-@@ -844,7 +870,7 @@ int main(int argc, char* const argv[]) {
-     close(fd);
+@@ -836,15 +870,17 @@ int main(int argc, char* const argv[]) {
+     // error code without logging anything.  We attempt to create the file
+     // now for better diagnostics.
+     const char* fileName = argv[optind];
+-    int fd = open(fileName, O_CREAT | O_RDWR, 0644);
+-    if (fd < 0) {
+-        fprintf(stderr, "Unable to open '%s': %s\n", fileName, strerror(errno));
+-        return 1;
++    if (strncmp(fileName, "stdout", 6)) {
++        int fd = open(fileName, O_CREAT | O_RDWR, 0644);
++        if (fd < 0) {
++            fprintf(stderr, "Unable to open '%s': %s\n", fileName, strerror(errno));
++            return 1;
++        }
++        close(fd);
+     }
+-    close(fd);
  
      status_t err = recordScreen(fileName);
 -    if (err == NO_ERROR) {
